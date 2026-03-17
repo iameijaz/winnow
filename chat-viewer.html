@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChatLog Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0f11;
+    --surface: #16181c;
+    --surface2: #1e2026;
+    --surface3: #252830;
+    --border: #2a2d35;
+    --text: #e8eaf0;
+    --text-dim: #7b8094;
+    --text-muted: #4a4e5e;
+    --user-bg: #1a2236;
+    --user-accent: #4a7cff;
+    --ai-bg: #1a1e26;
+    --ai-accent: #2dd4bf;
+    --highlight: #ffd700;
+    --highlight-bg: rgba(255, 215, 0, 0.18);
+    --search-match: #ff9500;
+    --search-match-bg: rgba(255, 149, 0, 0.2);
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-serif: 'Fraunces', serif;
+    --font-sans: 'DM Sans', sans-serif;
+    --radius: 10px;
+    --sidebar-w: 300px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    width: var(--sidebar-w);
+    min-width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s ease, min-width 0.3s ease;
+    overflow: hidden;
+    position: relative;
+  }
+  #sidebar.collapsed { width: 0; min-width: 0; border-right: none; }
+
+  .sidebar-header {
+    padding: 20px 16px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .sidebar-logo {
+    font-family: var(--font-serif);
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 12px;
+    white-space: nowrap;
+  }
+  .sidebar-logo span { color: var(--ai-accent); }
+
+  .sidebar-stats {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+  }
+
+  .conv-search-wrap {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .conv-search-wrap input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 0.78rem;
+    font-family: var(--font-sans);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .conv-search-wrap input:focus { border-color: var(--user-accent); }
+  .conv-search-wrap input::placeholder { color: var(--text-muted); }
+
+  #conv-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  #conv-list::-webkit-scrollbar { width: 4px; }
+  #conv-list::-webkit-scrollbar-track { background: transparent; }
+  #conv-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .conv-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .conv-item:hover { background: var(--surface2); }
+  .conv-item.active {
+    background: var(--surface2);
+    border-left-color: var(--ai-accent);
+  }
+  .conv-item-title {
+    font-size: 0.8rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+  .conv-item-meta {
+    font-size: 0.67rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    margin-top: 3px;
+  }
+  .conv-item.hidden { display: none; }
+
+  /* ── MAIN ── */
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* ── TOP BAR ── */
+  #topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 18px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  #toggle-sidebar {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  #toggle-sidebar:hover { border-color: var(--ai-accent); color: var(--ai-accent); }
+
+  #conv-title {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── SEARCH BAR ── */
+  #search-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 10px;
+    height: 34px;
+    min-width: 260px;
+    transition: border-color 0.2s;
+  }
+  #search-container:focus-within { border-color: var(--search-match); }
+  #search-container svg { color: var(--text-muted); flex-shrink: 0; }
+  #search-input {
+    background: none;
+    border: none;
+    outline: none;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--text);
+    width: 100%;
+  }
+  #search-input::placeholder { color: var(--text-muted); }
+  #search-count {
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    color: var(--search-match);
+    white-space: nowrap;
+    min-width: 50px;
+    text-align: right;
+  }
+  .search-nav {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    transition: color 0.15s;
+  }
+  .search-nav:hover { color: var(--search-match); }
+  #search-scope {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    outline: none;
+    height: 34px;
+    transition: border-color 0.2s;
+  }
+  #search-scope:focus { border-color: var(--search-match); }
+  #search-scope option { background: var(--surface2); }
+
+  /* ── UPLOAD ZONE ── */
+  #upload-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 40px;
+  }
+  .upload-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: var(--surface2);
+    border: 2px dashed var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 1.8rem;
+    transition: all 0.2s;
+  }
+  #upload-zone.drag-over .upload-icon {
+    border-color: var(--ai-accent);
+    color: var(--ai-accent);
+    background: rgba(45, 212, 191, 0.05);
+  }
+  .upload-title {
+    font-family: var(--font-serif);
+    font-size: 1.5rem;
+    font-weight: 300;
+    color: var(--text);
+    text-align: center;
+  }
+  .upload-sub {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-align: center;
+    max-width: 380px;
+    line-height: 1.6;
+  }
+  #file-input { display: none; }
+  .upload-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 0.85rem;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .upload-btn:hover { border-color: var(--ai-accent); color: var(--ai-accent); }
+
+  /* ── CHAT AREA ── */
+  #chat-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 0;
+    display: none;
+  }
+  #chat-area::-webkit-scrollbar { width: 5px; }
+  #chat-area::-webkit-scrollbar-track { background: transparent; }
+  #chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .chat-inner {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  /* ── SEARCH RESULTS PANEL ── */
+  #search-results-panel {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    flex-direction: column;
+    padding: 0;
+  }
+  #search-results-panel::-webkit-scrollbar { width: 5px; }
+  #search-results-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  #search-results-panel.visible { display: flex; }
+
+  .search-panel-header {
+    padding: 16px 24px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+  .search-panel-header strong { color: var(--search-match); }
+
+  .search-result-item {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .search-result-item:hover { background: var(--surface2); }
+  .sri-meta {
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    margin-bottom: 5px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .sri-role {
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 0.64rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .sri-role.user { background: rgba(74, 124, 255, 0.15); color: var(--user-accent); }
+  .sri-role.assistant { background: rgba(45, 212, 191, 0.12); color: var(--ai-accent); }
+  .sri-conv { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+  .sri-excerpt {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .sri-excerpt mark {
+    background: var(--search-match-bg);
+    color: var(--search-match);
+    border-radius: 2px;
+    padding: 0 1px;
+    font-style: normal;
+  }
+
+  /* ── MESSAGE BUBBLES ── */
+  .msg-block {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px 10px 14px;
+    border-radius: var(--radius);
+    margin-bottom: 2px;
+    position: relative;
+    transition: background 0.2s;
+    animation: fadeUp 0.25s ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .msg-block.user-msg {
+    background: var(--user-bg);
+    border-left: 3px solid var(--user-accent);
+  }
+  .msg-block.assistant-msg {
+    background: var(--ai-bg);
+    border-left: 3px solid var(--ai-accent);
+  }
+  .msg-block.system-msg {
+    background: transparent;
+    border-left: 3px solid var(--text-muted);
+    opacity: 0.5;
+  }
+  .msg-block.tool-msg {
+    background: rgba(255,255,255,0.02);
+    border-left: 3px solid var(--text-muted);
+    opacity: 0.6;
+    font-size: 0.78rem;
+  }
+  .msg-block.highlighted-msg { background: var(--highlight-bg) !important; }
+
+  .msg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .msg-role-badge {
+    font-size: 0.65rem;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+  .user-msg .msg-role-badge { color: var(--user-accent); background: rgba(74,124,255,0.12); }
+  .assistant-msg .msg-role-badge { color: var(--ai-accent); background: rgba(45,212,191,0.1); }
+  .system-msg .msg-role-badge { color: var(--text-muted); background: transparent; }
+  .tool-msg .msg-role-badge { color: var(--text-muted); background: transparent; }
+
+  .msg-model {
+    font-size: 0.62rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.04);
+  }
+  .msg-time {
+    font-size: 0.62rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  .msg-body {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg-body mark {
+    background: var(--highlight-bg);
+    color: var(--highlight);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+  .msg-body mark.current-match {
+    background: var(--search-match-bg);
+    color: var(--search-match);
+    outline: 1px solid var(--search-match);
+  }
+
+  /* code blocks */
+  .msg-body pre {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-size: 0.78rem;
+    font-family: var(--font-mono);
+  }
+  .msg-body code {
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    background: var(--surface3);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .msg-body pre code { background: none; padding: 0; }
+
+  /* divider between turns */
+  .turn-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 12px 0 10px;
+    opacity: 0.5;
+  }
+
+  /* empty state */
+  #empty-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-family: var(--font-serif);
+    font-style: italic;
+  }
+
+  /* LOADING */
+  #loading {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(14,15,17,0.85);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  #loading.visible { display: flex; }
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 2px solid var(--border);
+    border-top-color: var(--ai-accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); }
+
+  /* SCROLL TO TOP */
+  #scroll-top {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 36px;
+    height: 36px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    transition: all 0.2s;
+    z-index: 50;
+  }
+  #scroll-top.visible { display: flex; }
+  #scroll-top:hover { border-color: var(--ai-accent); color: var(--ai-accent); }
+
+  /* Tags / badges */
+  .badge-archived { font-size: 0.6rem; font-family: var(--font-mono); color: #ff6b6b; background: rgba(255,107,107,0.12); padding: 1px 6px; border-radius: 3px; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    #sidebar { width: 100%; min-width: 100%; position: absolute; z-index: 20; height: 100%; }
+    #sidebar.collapsed { width: 0; min-width: 0; }
+    .chat-inner { padding: 0 12px; }
+    #search-container { min-width: 160px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">Chat<span>Log</span></div>
+    <div class="sidebar-stats" id="sidebar-stats">No data loaded</div>
+  </div>
+  <div class="conv-search-wrap">
+    <input type="text" id="conv-filter" placeholder="Filter conversations…" autocomplete="off">
+  </div>
+  <div id="conv-list"></div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <button id="toggle-sidebar" title="Toggle sidebar">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="1" y="1" width="14" height="14" rx="2"/>
+        <line x1="6" y1="1" x2="6" y2="15"/>
+      </svg>
+    </button>
+    <div id="conv-title">Select a conversation</div>
+
+    <div id="search-container">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="6.5" cy="6.5" r="5"/>
+        <line x1="10.5" y1="10.5" x2="14" y2="14"/>
+      </svg>
+      <input type="text" id="search-input" placeholder="Search across conversations…" autocomplete="off">
+      <span id="search-count"></span>
+      <button class="search-nav" id="search-prev" title="Previous match">▲</button>
+      <button class="search-nav" id="search-next" title="Next match">▼</button>
+    </div>
+    <select id="search-scope">
+      <option value="current">This chat</option>
+      <option value="all">All chats</option>
+    </select>
+  </div>
+
+  <!-- UPLOAD ZONE -->
+  <div id="upload-zone">
+    <div class="upload-icon">📂</div>
+    <div class="upload-title">Drop your ChatGPT export here</div>
+    <div class="upload-sub">Supports <code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:0.8em">conversations.json</code> files exported from ChatGPT. You can load multiple files at once.</div>
+    <label class="upload-btn" for="file-input">Browse files</label>
+    <input type="file" id="file-input" accept=".json" multiple>
+  </div>
+
+  <!-- EMPTY STATE -->
+  <div id="empty-state" style="display:none">Choose a conversation from the sidebar</div>
+
+  <!-- SEARCH RESULTS PANEL -->
+  <div id="search-results-panel">
+    <div class="search-panel-header" id="search-panel-header"></div>
+    <div id="search-results-list"></div>
+  </div>
+
+  <!-- CHAT AREA -->
+  <div id="chat-area">
+    <div class="chat-inner" id="chat-messages"></div>
+  </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Parsing conversations…</div>
+</div>
+
+<!-- SCROLL TO TOP -->
+<button id="scroll-top" title="Back to top">↑</button>
+
+<script>
+  // ─── STATE ───────────────────────────────────────────────
+  let allConversations = [];     // flat array of parsed conv objects
+  let activeConvId = null;
+  let searchMatches = [];
+  let searchMatchIdx = -1;
+
+  // ─── ELEMENTS ────────────────────────────────────────────
+  const sidebar = document.getElementById('sidebar');
+  const convList = document.getElementById('conv-list');
+  const convTitle = document.getElementById('conv-title');
+  const chatArea = document.getElementById('chat-area');
+  const chatMessages = document.getElementById('chat-messages');
+  const uploadZone = document.getElementById('upload-zone');
+  const emptyState = document.getElementById('empty-state');
+  const searchInput = document.getElementById('search-input');
+  const searchCount = document.getElementById('search-count');
+  const searchResultsPanel = document.getElementById('search-results-panel');
+  const searchResultsList = document.getElementById('search-results-list');
+  const searchPanelHeader = document.getElementById('search-panel-header');
+  const searchScope = document.getElementById('search-scope');
+  const sidebarStats = document.getElementById('sidebar-stats');
+  const loading = document.getElementById('loading');
+  const scrollTopBtn = document.getElementById('scroll-top');
+  const convFilter = document.getElementById('conv-filter');
+
+  // ─── SIDEBAR TOGGLE ──────────────────────────────────────
+  document.getElementById('toggle-sidebar').addEventListener('click', () => {
+    sidebar.classList.toggle('collapsed');
+  });
+
+  // ─── SCROLL TO TOP ────────────────────────────────────────
+  chatArea.addEventListener('scroll', () => {
+    scrollTopBtn.classList.toggle('visible', chatArea.scrollTop > 400);
+  });
+  scrollTopBtn.addEventListener('click', () => {
+    chatArea.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // ─── FILE LOADING ─────────────────────────────────────────
+  const fileInput = document.getElementById('file-input');
+  fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    handleFiles(e.dataTransfer.files);
+  });
+
+  async function handleFiles(files) {
+    loading.classList.add('visible');
+    const results = [];
+    for (const file of files) {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const parsed = Array.isArray(data) ? data : [data];
+        results.push(...parsed);
+      } catch(e) {
+        console.error('Failed to parse', file.name, e);
+      }
+    }
+    // merge avoiding duplicates by conversation_id
+    const existing = new Set(allConversations.map(c => c.id));
+    for (const raw of results) {
+      if (!existing.has(raw.id)) {
+        const conv = parseConversation(raw);
+        if (conv) { allConversations.push(conv); existing.add(raw.id); }
+      }
+    }
+    allConversations.sort((a, b) => b.createTime - a.createTime);
+    loading.classList.remove('visible');
+    uploadZone.style.display = 'none';
+    renderSidebar();
+    if (allConversations.length > 0 && !activeConvId) showEmpty();
+  }
+
+  // ─── PARSER ──────────────────────────────────────────────
+  function parseConversation(raw) {
+    if (!raw || !raw.mapping) return null;
+    const messages = [];
+    const visited = new Set();
+
+    function walk(nodeId) {
+      if (!nodeId || visited.has(nodeId)) return;
+      visited.add(nodeId);
+      const node = raw.mapping[nodeId];
+      if (!node) return;
+      const msg = node.message;
+      if (msg && msg.content && msg.author?.role !== 'system') {
+        const parts = msg.content.parts || [];
+        const textParts = parts.filter(p => typeof p === 'string').join('\n').trim();
+        if (textParts) {
+          messages.push({
+            id: msg.id,
+            role: msg.author?.role || 'unknown',
+            content: textParts,
+            model: msg.metadata?.model_slug || null,
+            time: msg.create_time ? new Date(msg.create_time * 1000) : null,
+          });
+        }
+      }
+      // follow first child only (main thread)
+      if (node.children && node.children.length > 0) {
+        walk(node.children[0]);
+      }
+    }
+
+    // find root node
+    const rootId = Object.values(raw.mapping).find(n => !n.parent || !raw.mapping[n.parent]?.parent === undefined)?.id
+      || Object.keys(raw.mapping).find(id => !raw.mapping[id].parent);
+    walk(rootId);
+
+    return {
+      id: raw.id || raw.conversation_id,
+      title: raw.title || 'Untitled',
+      createTime: raw.create_time || 0,
+      isArchived: raw.is_archived || false,
+      messages,
+    };
+  }
+
+  // ─── SIDEBAR RENDER ───────────────────────────────────────
+  function renderSidebar() {
+    const total = allConversations.length;
+    const totalMsgs = allConversations.reduce((a,c) => a + c.messages.length, 0);
+    sidebarStats.textContent = `${total} conversations · ${totalMsgs} messages`;
+    buildConvList(allConversations);
+  }
+
+  function buildConvList(convs) {
+    convList.innerHTML = '';
+    if (convs.length === 0) {
+      convList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:0.8rem">No conversations found</div>';
+      return;
+    }
+    convs.forEach(conv => {
+      const el = document.createElement('div');
+      el.className = 'conv-item' + (conv.id === activeConvId ? ' active' : '');
+      el.dataset.id = conv.id;
+      const date = conv.createTime ? new Date(conv.createTime * 1000).toLocaleDateString() : '';
+      el.innerHTML = `
+        <div class="conv-item-title">${escHtml(conv.title)}${conv.isArchived ? ' <span class="badge-archived">archived</span>' : ''}</div>
+        <div class="conv-item-meta">${date} · ${conv.messages.length} msgs</div>
+      `;
+      el.addEventListener('click', () => openConversation(conv.id));
+      convList.appendChild(el);
+    });
+  }
+
+  // ─── CONVERSATION FILTER ──────────────────────────────────
+  convFilter.addEventListener('input', () => {
+    const q = convFilter.value.trim().toLowerCase();
+    const filtered = q ? allConversations.filter(c => c.title.toLowerCase().includes(q)) : allConversations;
+    buildConvList(filtered);
+  });
+
+  // ─── OPEN CONVERSATION ────────────────────────────────────
+  function openConversation(id) {
+    activeConvId = id;
+    const conv = allConversations.find(c => c.id === id);
+    if (!conv) return;
+
+    // update sidebar active state
+    document.querySelectorAll('.conv-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === id);
+    });
+
+    convTitle.textContent = conv.title;
+    chatMessages.innerHTML = '';
+
+    // hide upload / empty, show chat
+    uploadZone.style.display = 'none';
+    emptyState.style.display = 'none';
+    searchResultsPanel.classList.remove('visible');
+    chatArea.style.display = 'block';
+    searchInput.value = '';
+    searchCount.textContent = '';
+    searchMatches = [];
+
+    // render messages
+    conv.messages.forEach((msg, i) => {
+      if (i > 0 && msg.role === 'user') {
+        const hr = document.createElement('hr');
+        hr.className = 'turn-divider';
+        chatMessages.appendChild(hr);
+      }
+      chatMessages.appendChild(renderMessage(msg, null));
+    });
+
+    chatArea.scrollTop = 0;
+  }
+
+  function showEmpty() {
+    emptyState.style.display = 'flex';
+    chatArea.style.display = 'none';
+    uploadZone.style.display = 'none';
+    searchResultsPanel.classList.remove('visible');
+  }
+
+  // ─── MESSAGE RENDER ───────────────────────────────────────
+  function renderMessage(msg, highlight) {
+    const block = document.createElement('div');
+    block.className = `msg-block ${msg.role}-msg`;
+    block.dataset.msgId = msg.id;
+
+    const roleLabel = msg.role === 'assistant' ? 'Assistant' : msg.role === 'user' ? 'You' : msg.role;
+    const timeStr = msg.time ? msg.time.toLocaleString() : '';
+    const modelBadge = msg.model ? `<span class="msg-model">${escHtml(msg.model)}</span>` : '';
+
+    let bodyHtml = escHtml(msg.content);
+
+    // code block formatting
+    bodyHtml = bodyHtml.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      return `<pre><code>${code}</code></pre>`;
+    });
+    bodyHtml = bodyHtml.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // highlight search term
+    if (highlight) {
+      const escaped = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      bodyHtml = bodyHtml.replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`);
+    }
+
+    block.innerHTML = `
+      <div class="msg-header">
+        <span class="msg-role-badge">${roleLabel}</span>
+        ${modelBadge}
+        <span class="msg-time">${timeStr}</span>
+      </div>
+      <div class="msg-body">${bodyHtml}</div>
+    `;
+    return block;
+  }
+
+  // ─── IN-CONVERSATION SEARCH ────────────────────────────────
+  searchInput.addEventListener('input', debounce(doSearch, 180));
+  searchScope.addEventListener('change', doSearch);
+  document.getElementById('search-prev').addEventListener('click', () => navigateMatch(-1));
+  document.getElementById('search-next').addEventListener('click', () => navigateMatch(1));
+
+  function doSearch() {
+    const q = searchInput.value.trim();
+    if (!q) {
+      clearSearch();
+      return;
+    }
+    if (searchScope.value === 'all') {
+      doGlobalSearch(q);
+    } else {
+      doCurrentSearch(q);
+    }
+  }
+
+  function clearSearch() {
+    searchCount.textContent = '';
+    searchMatches = [];
+    searchMatchIdx = -1;
+    // re-render without highlights if conversation is open
+    if (activeConvId) {
+      const conv = allConversations.find(c => c.id === activeConvId);
+      if (conv) {
+        chatMessages.innerHTML = '';
+        conv.messages.forEach((msg, i) => {
+          if (i > 0 && msg.role === 'user') {
+            const hr = document.createElement('hr');
+            hr.className = 'turn-divider';
+            chatMessages.appendChild(hr);
+          }
+          chatMessages.appendChild(renderMessage(msg, null));
+        });
+      }
+    }
+    searchResultsPanel.classList.remove('visible');
+    if (activeConvId) chatArea.style.display = 'block';
+    else showEmpty();
+  }
+
+  function doCurrentSearch(q) {
+    if (!activeConvId) return;
+    const conv = allConversations.find(c => c.id === activeConvId);
+    if (!conv) return;
+
+    searchResultsPanel.classList.remove('visible');
+    chatArea.style.display = 'block';
+
+    // re-render with highlights
+    chatMessages.innerHTML = '';
+    conv.messages.forEach((msg, i) => {
+      if (i > 0 && msg.role === 'user') {
+        const hr = document.createElement('hr');
+        hr.className = 'turn-divider';
+        chatMessages.appendChild(hr);
+      }
+      chatMessages.appendChild(renderMessage(msg, q));
+    });
+
+    // collect mark elements
+    searchMatches = Array.from(chatMessages.querySelectorAll('mark'));
+    searchMatchIdx = searchMatches.length > 0 ? 0 : -1;
+    updateMatchCount();
+    if (searchMatchIdx >= 0) highlightCurrentMatch();
+  }
+
+  function doGlobalSearch(q) {
+    const ql = q.toLowerCase();
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(escaped, 'gi');
+
+    const hits = [];
+    allConversations.forEach(conv => {
+      conv.messages.forEach(msg => {
+        if (msg.content.toLowerCase().includes(ql)) {
+          hits.push({ conv, msg });
+        }
+      });
+    });
+
+    searchResultsPanel.classList.add('visible');
+    chatArea.style.display = 'none';
+    emptyState.style.display = 'none';
+
+    searchPanelHeader.innerHTML = `Found <strong>${hits.length}</strong> result${hits.length !== 1 ? 's' : ''} for "<strong>${escHtml(q)}</strong>"`;
+    searchResultsList.innerHTML = '';
+    searchCount.textContent = `${hits.length} hits`;
+    searchMatches = [];
+    searchMatchIdx = -1;
+
+    if (hits.length === 0) {
+      searchResultsList.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-muted);font-size:0.85rem">No results found</div>';
+      return;
+    }
+
+    hits.forEach(({conv, msg}) => {
+      const excerpt = msg.content.replace(re, m => `<mark>${escHtml(m)}</mark>`);
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      item.innerHTML = `
+        <div class="sri-meta">
+          <span class="sri-role ${msg.role}">${msg.role === 'assistant' ? 'AI' : 'You'}</span>
+          <span class="sri-conv">${escHtml(conv.title)}</span>
+          <span style="margin-left:auto;font-size:0.62rem">${msg.time ? msg.time.toLocaleDateString() : ''}</span>
+        </div>
+        <div class="sri-excerpt">${escHtml(msg.content).slice(0,300).replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`)}</div>
+      `;
+      item.addEventListener('click', () => {
+        openConversation(conv.id);
+        searchInput.value = q;
+        searchScope.value = 'current';
+        setTimeout(() => { doCurrentSearch(q); }, 50);
+      });
+      searchResultsList.appendChild(item);
+    });
+  }
+
+  function navigateMatch(dir) {
+    if (searchMatches.length === 0) return;
+    searchMatchIdx = (searchMatchIdx + dir + searchMatches.length) % searchMatches.length;
+    updateMatchCount();
+    highlightCurrentMatch();
+  }
+
+  function highlightCurrentMatch() {
+    searchMatches.forEach((el, i) => el.classList.toggle('current-match', i === searchMatchIdx));
+    const cur = searchMatches[searchMatchIdx];
+    if (cur) cur.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function updateMatchCount() {
+    if (searchScope.value === 'all') return;
+    if (searchMatches.length === 0) {
+      searchCount.textContent = '0 matches';
+    } else {
+      searchCount.textContent = `${searchMatchIdx + 1}/${searchMatches.length}`;
+    }
+  }
+
+  // ─── UTILS ────────────────────────────────────────────────
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function debounce(fn, ms) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
+  // keyboard shortcut: Ctrl+K or / to focus search
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement.tagName !== 'INPUT')) {
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+    }
+    if (e.key === 'Escape') { searchInput.blur(); clearSearch(); }
+    if (e.key === 'Enter' && document.activeElement === searchInput) navigateMatch(1);
+    if (e.shiftKey && e.key === 'Enter' && document.activeElement === searchInput) navigateMatch(-1);
+  });
+</script>
+</body>
+</html>
