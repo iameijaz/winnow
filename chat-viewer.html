@@ -6,6 +6,12 @@
 <title>ChatLog Viewer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- Markdown -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<!-- KaTeX for math -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
 <style>
   :root {
     --bg: #0e0f11;
@@ -496,6 +502,61 @@
   }
   .msg-body pre code { background: none; padding: 0; }
 
+  /* markdown rendered elements */
+  .msg-body h1,.msg-body h2,.msg-body h3,.msg-body h4 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    margin: 14px 0 6px;
+    line-height: 1.3;
+    color: var(--text);
+  }
+  .msg-body h1 { font-size: 1.25rem; }
+  .msg-body h2 { font-size: 1.1rem; }
+  .msg-body h3 { font-size: 0.98rem; }
+  .msg-body h4 { font-size: 0.9rem; color: var(--text-dim); }
+  .msg-body p { margin: 6px 0; }
+  .msg-body ul, .msg-body ol { padding-left: 1.4em; margin: 6px 0; }
+  .msg-body li { margin: 3px 0; }
+  .msg-body blockquote {
+    border-left: 3px solid var(--border);
+    margin: 8px 0;
+    padding: 4px 12px;
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  .msg-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    font-size: 0.82rem;
+  }
+  .msg-body th, .msg-body td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  .msg-body th {
+    background: var(--surface3);
+    font-weight: 500;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+  .msg-body tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+  .msg-body a { color: var(--user-accent); text-decoration: none; }
+  .msg-body a:hover { text-decoration: underline; }
+  .msg-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .msg-body strong { font-weight: 600; color: var(--text); }
+  .msg-body em { font-style: italic; color: var(--text-dim); }
+
+  /* KaTeX math */
+  .msg-body .katex-display {
+    margin: 10px 0;
+    overflow-x: auto;
+    padding: 4px 0;
+  }
+  .msg-body .katex { font-size: 1em; }
+
   /* divider between turns */
   .turn-divider {
     border: none;
@@ -851,6 +912,45 @@
     searchResultsPanel.classList.remove('visible');
   }
 
+  // ─── MARKDOWN + MATH RENDERER ────────────────────────────
+  // Configure marked
+  marked.setOptions({ breaks: true, gfm: true });
+
+  function mdRender(raw, highlight) {
+    // 1. Extract and protect math blocks before markdown parsing
+    const mathBlocks = [];
+    let s = raw;
+
+    // Display math: \[...\] and $$...$$
+    s = s.replace(/\\\[([\s\S]*?)\\\]/g, (_, m) => { mathBlocks.push({type:'block',tex:m}); return `MATHBLOCK${mathBlocks.length-1}END`; });
+    s = s.replace(/\$\$([\s\S]*?)\$\$/g,  (_, m) => { mathBlocks.push({type:'block',tex:m}); return `MATHBLOCK${mathBlocks.length-1}END`; });
+    // Inline math: \(...\) and $...$
+    s = s.replace(/\\\(([\s\S]*?)\\\)/g, (_, m) => { mathBlocks.push({type:'inline',tex:m}); return `MATHINLINE${mathBlocks.length-1}END`; });
+    s = s.replace(/\$([^\$\n]+?)\$/g,    (_, m) => { mathBlocks.push({type:'inline',tex:m}); return `MATHINLINE${mathBlocks.length-1}END`; });
+
+    // 2. Run marked
+    let html = marked.parse(s);
+
+    // 3. Restore math
+    html = html.replace(/MATHBLOCK(\d+)END/g, (_, i) => {
+      try { return katex.renderToString(mathBlocks[+i].tex, {displayMode:true, throwOnError:false}); }
+      catch(e) { return `<code>${escHtml(mathBlocks[+i].tex)}</code>`; }
+    });
+    html = html.replace(/MATHINLINE(\d+)END/g, (_, i) => {
+      try { return katex.renderToString(mathBlocks[+i].tex, {displayMode:false, throwOnError:false}); }
+      catch(e) { return `<code>${escHtml(mathBlocks[+i].tex)}</code>`; }
+    });
+
+    // 4. Apply search highlight (only in text nodes, avoid breaking HTML tags)
+    if (highlight) {
+      const escaped = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Only highlight in text content, not inside HTML tags
+      html = html.replace(new RegExp(`(${escaped})(?=[^<]*(?:<|$))`, 'gi'), '<mark>$1</mark>');
+    }
+
+    return html;
+  }
+
   // ─── MESSAGE RENDER ───────────────────────────────────────
   function renderMessage(msg, highlight) {
     const block = document.createElement('div');
@@ -861,19 +961,7 @@
     const timeStr = msg.time ? msg.time.toLocaleString() : '';
     const modelBadge = msg.model ? `<span class="msg-model">${escHtml(msg.model)}</span>` : '';
 
-    let bodyHtml = escHtml(msg.content);
-
-    // code block formatting
-    bodyHtml = bodyHtml.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-      return `<pre><code>${code}</code></pre>`;
-    });
-    bodyHtml = bodyHtml.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-
-    // highlight search term
-    if (highlight) {
-      const escaped = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      bodyHtml = bodyHtml.replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`);
-    }
+    const bodyHtml = mdRender(msg.content, highlight);
 
     block.innerHTML = `
       <div class="msg-header">
