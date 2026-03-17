@@ -625,6 +625,98 @@
 
   /* Tags / badges */
   .badge-archived { font-size: 0.6rem; font-family: var(--font-mono); color: #ff6b6b; background: rgba(255,107,107,0.12); padding: 1px 6px; border-radius: 3px; }
+  .badge-source {
+    font-size: 0.58rem; font-family: var(--font-mono); padding: 1px 6px; border-radius: 3px; margin-left: 4px; vertical-align: middle;
+  }
+  .badge-source.claude { color: var(--ai-accent); background: rgba(45,212,191,0.1); }
+  .badge-source.chatgpt { color: var(--user-accent); background: rgba(74,124,255,0.1); }
+
+  /* thinking block */
+  .thinking-block {
+    margin: 8px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .thinking-summary {
+    padding: 6px 12px;
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    cursor: pointer;
+    background: var(--surface3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    list-style: none;
+  }
+  .thinking-summary::-webkit-details-marker { display: none; }
+  .thinking-summary::before { content: '▶'; font-size: 0.6rem; transition: transform 0.2s; }
+  details[open] .thinking-summary::before { transform: rotate(90deg); }
+  .thinking-content {
+    padding: 10px 14px;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-style: italic;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    background: rgba(255,255,255,0.01);
+  }
+
+  /* tool use block */
+  .tool-block {
+    margin: 6px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .tool-summary {
+    padding: 5px 12px;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    cursor: pointer;
+    background: var(--surface3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    list-style: none;
+  }
+  .tool-summary::-webkit-details-marker { display: none; }
+  .tool-summary::before { content: '▶'; font-size: 0.6rem; transition: transform 0.2s; }
+  details[open] .tool-summary::before { transform: rotate(90deg); }
+  .tool-name { color: var(--ai-accent); font-weight: 500; }
+  .tool-content {
+    padding: 10px 14px;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: rgba(255,255,255,0.01);
+  }
+
+  /* attachments */
+  .msg-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .attachment-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+  }
 
   /* ── DELETE & EXPORT ── */
   .conv-item {
@@ -830,8 +922,11 @@
   <!-- UPLOAD ZONE -->
   <div id="upload-zone">
     <div class="upload-icon">📂</div>
-    <div class="upload-title">Drop your ChatGPT export here</div>
-    <div class="upload-sub">Supports <code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:0.8em">conversations.json</code> files exported from ChatGPT. You can load multiple files at once.</div>
+    <div class="upload-title">Drop your AI chat export here</div>
+    <div class="upload-sub">
+      Supports exports from <strong style="color:var(--ai-accent)">Claude</strong> and <strong style="color:var(--user-accent)">ChatGPT</strong>.<br>
+      Load <code style="background:var(--surface2);padding:2px 5px;border-radius:4px;font-size:0.8em">conversations.json</code> · <code style="background:var(--surface2);padding:2px 5px;border-radius:4px;font-size:0.8em">projects.json</code> · multiple files at once.
+    </div>
     <label class="upload-btn" for="file-input">Browse files</label>
     <input type="file" id="file-input" accept=".json" multiple>
   </div>
@@ -882,6 +977,7 @@
   let activeConvId = null;
   let searchMatches = [];
   let searchMatchIdx = -1;
+  let rawConversationMap = {};   // id → original raw object (for export)
 
   // ─── ELEMENTS ────────────────────────────────────────────
   const sidebar = document.getElementById('sidebar');
@@ -934,29 +1030,101 @@
       try {
         const text = await file.text();
         const data = JSON.parse(text);
-        const parsed = Array.isArray(data) ? data : [data];
-        results.push(...parsed);
-      } catch(e) {
-        console.error('Failed to parse', file.name, e);
-      }
+        const items = Array.isArray(data) ? data : [data];
+        results.push(...items);
+      } catch(e) { console.error('Failed to parse', file.name, e); }
     }
-    // merge avoiding duplicates by conversation_id
     const existing = new Set(allConversations.map(c => c.id));
     for (const raw of results) {
-      if (!existing.has(raw.id)) {
-        const conv = parseConversation(raw);
-        if (conv) { allConversations.push(conv); existing.add(raw.id); }
+      const conv = parseAny(raw);
+      if (conv && !existing.has(conv.id)) {
+        allConversations.push(conv);
+        existing.add(conv.id);
+        rawConversationMap[conv.id] = raw;
       }
     }
     allConversations.sort((a, b) => b.createTime - a.createTime);
     loading.classList.remove('visible');
     uploadZone.style.display = 'none';
     renderSidebar();
+    updateDeleteBtn();
     if (allConversations.length > 0 && !activeConvId) showEmpty();
   }
 
-  // ─── PARSER ──────────────────────────────────────────────
-  function parseConversation(raw) {
+  // ─── FORMAT DETECTION ────────────────────────────────────
+  function parseAny(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    // Claude format: has chat_messages array
+    if (Array.isArray(raw.chat_messages)) return parseClaude(raw);
+    // Claude projects format: has docs but no chat_messages — skip (no conversations)
+    if (Array.isArray(raw.docs) && !raw.chat_messages) return null;
+    // ChatGPT format: has mapping object
+    if (raw.mapping && typeof raw.mapping === 'object') return parseChatGPT(raw);
+    return null;
+  }
+
+  // ─── CLAUDE PARSER ───────────────────────────────────────
+  function parseClaude(raw) {
+    const messages = [];
+    for (const msg of raw.chat_messages || []) {
+      const role = msg.sender === 'human' ? 'user' : 'assistant';
+      // Build content from the content array, picking text blocks
+      // and rendering tool use / thinking as collapsibles
+      const parts = [];
+      const contentBlocks = msg.content || [];
+
+      // Group into: text, thinking, tool_use, tool_result
+      let mainText = '';
+      const extras = [];
+
+      for (const block of contentBlocks) {
+        const t = block.type;
+        if (t === 'text') {
+          mainText += (mainText ? '\n' : '') + (block.text || '');
+        } else if (t === 'thinking') {
+          extras.push({ type: 'thinking', text: block.text || '' });
+        } else if (t === 'tool_use') {
+          extras.push({ type: 'tool_use', name: block.name || block.integration_name || 'tool', input: block.input });
+        } else if (t === 'tool_result') {
+          // skip tool results — they clutter the view
+        }
+      }
+
+      // Fall back to top-level text field
+      if (!mainText && msg.text) mainText = msg.text;
+
+      if (!mainText && extras.length === 0) continue;
+
+      const attachments = (msg.attachments || []).map(a => ({
+        name: a.file_name || a.filename || 'attachment',
+        type: a.file_type || '',
+      }));
+      const files = (msg.files || []).map(f => ({ name: f.file_name || f.filename || 'file' }));
+
+      messages.push({
+        id: msg.uuid,
+        role,
+        content: mainText,
+        extras,           // thinking blocks + tool calls
+        attachments: [...attachments, ...files],
+        model: null,      // Claude export doesn't include model per message
+        time: msg.created_at ? new Date(msg.created_at) : null,
+        source: 'claude',
+      });
+    }
+
+    return {
+      id: raw.uuid,
+      title: raw.name || 'Untitled',
+      createTime: raw.created_at ? new Date(raw.created_at).getTime() / 1000 : 0,
+      isArchived: false,
+      source: 'claude',
+      messages,
+    };
+  }
+
+  // ─── CHATGPT PARSER ──────────────────────────────────────
+  function parseChatGPT(raw) {
     if (!raw || !raw.mapping) return null;
     const messages = [];
     const visited = new Set();
@@ -975,20 +1143,18 @@
             id: msg.id,
             role: msg.author?.role || 'unknown',
             content: textParts,
+            extras: [],
+            attachments: [],
             model: msg.metadata?.model_slug || null,
             time: msg.create_time ? new Date(msg.create_time * 1000) : null,
+            source: 'chatgpt',
           });
         }
       }
-      // follow first child only (main thread)
-      if (node.children && node.children.length > 0) {
-        walk(node.children[0]);
-      }
+      if (node.children && node.children.length > 0) walk(node.children[0]);
     }
 
-    // find root node
-    const rootId = Object.values(raw.mapping).find(n => !n.parent || !raw.mapping[n.parent]?.parent === undefined)?.id
-      || Object.keys(raw.mapping).find(id => !raw.mapping[id].parent);
+    const rootId = Object.keys(raw.mapping).find(id => !raw.mapping[id].parent);
     walk(rootId);
 
     return {
@@ -996,6 +1162,7 @@
       title: raw.title || 'Untitled',
       createTime: raw.create_time || 0,
       isArchived: raw.is_archived || false,
+      source: 'chatgpt',
       messages,
     };
   }
@@ -1021,7 +1188,7 @@
       const date = conv.createTime ? new Date(conv.createTime * 1000).toLocaleDateString() : '';
       el.innerHTML = `
         <div class="conv-item-body">
-          <div class="conv-item-title">${escHtml(conv.title)}${conv.isArchived ? ' <span class="badge-archived">archived</span>' : ''}</div>
+          <div class="conv-item-title">${escHtml(conv.title)}${conv.isArchived ? ' <span class="badge-archived">archived</span>' : ''}<span class="badge-source ${conv.source || 'chatgpt'}">${conv.source === 'claude' ? 'Claude' : 'GPT'}</span></div>
           <div class="conv-item-meta">${date} · ${conv.messages.length} msgs</div>
         </div>
         <button class="conv-item-del" title="Delete this conversation">✕</button>
@@ -1135,7 +1302,32 @@
     const timeStr = msg.time ? msg.time.toLocaleString() : '';
     const modelBadge = msg.model ? `<span class="msg-model">${escHtml(msg.model)}</span>` : '';
 
-    const bodyHtml = mdRender(msg.content, highlight);
+    // extras: thinking + tool_use (Claude)
+    let extrasHtml = '';
+    for (const ex of (msg.extras || [])) {
+      if (ex.type === 'thinking') {
+        extrasHtml += `<details class="thinking-block">
+          <summary class="thinking-summary">Claude's thinking</summary>
+          <div class="thinking-content">${escHtml(ex.text)}</div>
+        </details>`;
+      } else if (ex.type === 'tool_use') {
+        const inputStr = ex.input ? JSON.stringify(ex.input, null, 2) : '';
+        extrasHtml += `<details class="tool-block">
+          <summary class="tool-summary">🔧 <span class="tool-name">${escHtml(ex.name)}</span></summary>
+          ${inputStr ? `<div class="tool-content">${escHtml(inputStr)}</div>` : ''}
+        </details>`;
+      }
+    }
+
+    // attachments
+    let attachHtml = '';
+    if (msg.attachments && msg.attachments.length > 0) {
+      attachHtml = '<div class="msg-attachments">' +
+        msg.attachments.map(a => `<span class="attachment-pill">📎 ${escHtml(a.name)}</span>`).join('') +
+        '</div>';
+    }
+
+    const bodyHtml = msg.content ? mdRender(msg.content, highlight) : '';
 
     block.innerHTML = `
       <div class="msg-header">
@@ -1143,7 +1335,9 @@
         ${modelBadge}
         <span class="msg-time">${timeStr}</span>
       </div>
+      ${extrasHtml}
       <div class="msg-body">${bodyHtml}</div>
+      ${attachHtml}
     `;
     return block;
   }
@@ -1400,66 +1594,9 @@
   }
 
   // ─── EXPORT ───────────────────────────────────────────────
-  // We keep rawConversations so we can reconstruct the original JSON
-  let rawConversationMap = {};  // id → original raw object
-
-  // Patch handleFiles to keep raw data
-  const _origHandleFiles = handleFiles;
-
-  // Override: store raw data alongside parsed
-  async function handleFilesWithRaw(files) {
-    loading.classList.add('visible');
-    const results = [];
-    for (const file of files) {
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        const parsed = Array.isArray(data) ? data : [data];
-        results.push(...parsed);
-      } catch(e) { console.error('Failed to parse', file.name, e); }
-    }
-    const existing = new Set(allConversations.map(c => c.id));
-    for (const raw of results) {
-      const convId = raw.id || raw.conversation_id;
-      if (!existing.has(convId)) {
-        const conv = parseConversation(raw);
-        if (conv) {
-          allConversations.push(conv);
-          existing.add(convId);
-          rawConversationMap[convId] = raw;
-        }
-      }
-    }
-    allConversations.sort((a, b) => b.createTime - a.createTime);
-    loading.classList.remove('visible');
-    uploadZone.style.display = 'none';
-    renderSidebar();
-    updateDeleteBtn();
-    if (allConversations.length > 0 && !activeConvId) showEmpty();
-  }
-
-  // Replace event listeners to use new function
-  fileInput.removeEventListener('change', handleFiles);
-  fileInput.addEventListener('change', e => handleFilesWithRaw(e.target.files));
-  uploadZone.removeEventListener('drop', uploadZone._dropHandler);
-  uploadZone.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadZone.classList.remove('drag-over');
-    handleFilesWithRaw(e.dataTransfer.files);
-  });
-
   exportBtn.addEventListener('click', () => {
     if (allConversations.length === 0) { showToast('Nothing to export yet'); return; }
-    // Reconstruct raw array for the currently loaded conversations
-    const toExport = allConversations
-      .map(c => rawConversationMap[c.id])
-      .filter(Boolean);
-    // For any conversation without raw data, create a minimal export
-    allConversations.forEach(c => {
-      if (!rawConversationMap[c.id]) {
-        toExport.push({ id: c.id, title: c.title, create_time: c.createTime, is_archived: c.isArchived, messages: c.messages });
-      }
-    });
+    const toExport = allConversations.map(c => rawConversationMap[c.id]).filter(Boolean);
     const blob = new Blob([JSON.stringify(toExport, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
