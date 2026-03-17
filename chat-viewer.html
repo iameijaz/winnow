@@ -626,6 +626,144 @@
   /* Tags / badges */
   .badge-archived { font-size: 0.6rem; font-family: var(--font-mono); color: #ff6b6b; background: rgba(255,107,107,0.12); padding: 1px 6px; border-radius: 3px; }
 
+  /* ── DELETE & EXPORT ── */
+  .conv-item {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    position: relative;
+  }
+  .conv-item-body {
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+    padding: 10px 14px;
+  }
+  .conv-item-del {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    margin-right: 6px;
+    background: none;
+    border: none;
+    border-radius: 5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    transition: background 0.15s, color 0.15s;
+  }
+  .conv-item:hover .conv-item-del { display: flex; }
+  .conv-item-del:hover { background: rgba(255,80,80,0.15); color: #ff5050; }
+
+  /* sidebar footer */
+  .sidebar-footer {
+    border-top: 1px solid var(--border);
+    padding: 10px 12px;
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+  }
+  .sidebar-footer button {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 7px;
+    padding: 7px 10px;
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .sidebar-footer button:hover { border-color: var(--ai-accent); color: var(--ai-accent); }
+  .sidebar-footer button.danger:hover { border-color: #ff5050; color: #ff5050; }
+  #export-btn { flex: 2; }
+
+  /* topbar delete button */
+  #delete-conv-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  #delete-conv-btn.visible { display: flex; }
+  #delete-conv-btn:hover { border-color: #ff5050; color: #ff5050; background: rgba(255,80,80,0.07); }
+
+  /* confirm dialog */
+  #confirm-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,11,13,0.75);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  #confirm-overlay.visible { display: flex; }
+  .confirm-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    max-width: 360px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .confirm-box .confirm-icon { font-size: 2rem; margin-bottom: 12px; }
+  .confirm-box h3 { font-family: var(--font-serif); font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+  .confirm-box p { font-size: 0.8rem; color: var(--text-dim); line-height: 1.5; margin-bottom: 20px; }
+  .confirm-actions { display: flex; gap: 10px; justify-content: center; }
+  .confirm-actions button {
+    padding: 8px 22px;
+    border-radius: 7px;
+    font-size: 0.8rem;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  #confirm-cancel { background: var(--surface3); border: 1px solid var(--border); color: var(--text-dim); }
+  #confirm-cancel:hover { border-color: var(--text-dim); color: var(--text); }
+  #confirm-ok { background: rgba(255,80,80,0.15); border: 1px solid #ff5050; color: #ff5050; }
+  #confirm-ok:hover { background: rgba(255,80,80,0.25); }
+
+  /* toast */
+  #toast {
+    position: fixed;
+    bottom: 70px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.78rem;
+    font-family: var(--font-mono);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 300;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
   /* Responsive */
   @media (max-width: 600px) {
     #sidebar { width: 100%; min-width: 100%; position: absolute; z-index: 20; height: 100%; }
@@ -647,6 +785,14 @@
     <input type="text" id="conv-filter" placeholder="Filter conversations…" autocomplete="off">
   </div>
   <div id="conv-list"></div>
+  <div class="sidebar-footer">
+    <button id="export-btn" title="Save current conversations as JSON">
+      ↓ Export JSON
+    </button>
+    <button id="clear-all-btn" class="danger" title="Delete all conversations">
+      ✕ Clear all
+    </button>
+  </div>
 </div>
 
 <!-- MAIN -->
@@ -660,6 +806,10 @@
       </svg>
     </button>
     <div id="conv-title">Select a conversation</div>
+
+    <button id="delete-conv-btn" title="Delete this conversation">
+      🗑 Delete chat
+    </button>
 
     <div id="search-container">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
@@ -709,6 +859,22 @@
 
 <!-- SCROLL TO TOP -->
 <button id="scroll-top" title="Back to top">↑</button>
+
+<!-- CONFIRM DIALOG -->
+<div id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="confirm-icon">🗑</div>
+    <h3 id="confirm-title">Delete conversation?</h3>
+    <p id="confirm-msg">This will remove it from the viewer. Export first if you want to keep a copy.</p>
+    <div class="confirm-actions">
+      <button id="confirm-cancel">Cancel</button>
+      <button id="confirm-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
 
 <script>
   // ─── STATE ───────────────────────────────────────────────
@@ -854,10 +1020,17 @@
       el.dataset.id = conv.id;
       const date = conv.createTime ? new Date(conv.createTime * 1000).toLocaleDateString() : '';
       el.innerHTML = `
-        <div class="conv-item-title">${escHtml(conv.title)}${conv.isArchived ? ' <span class="badge-archived">archived</span>' : ''}</div>
-        <div class="conv-item-meta">${date} · ${conv.messages.length} msgs</div>
+        <div class="conv-item-body">
+          <div class="conv-item-title">${escHtml(conv.title)}${conv.isArchived ? ' <span class="badge-archived">archived</span>' : ''}</div>
+          <div class="conv-item-meta">${date} · ${conv.messages.length} msgs</div>
+        </div>
+        <button class="conv-item-del" title="Delete this conversation">✕</button>
       `;
-      el.addEventListener('click', () => openConversation(conv.id));
+      el.querySelector('.conv-item-body').addEventListener('click', () => openConversation(conv.id));
+      el.querySelector('.conv-item-del').addEventListener('click', e => {
+        e.stopPropagation();
+        confirmDelete(conv.id, conv.title, false);
+      });
       convList.appendChild(el);
     });
   }
@@ -903,6 +1076,7 @@
     });
 
     chatArea.scrollTop = 0;
+    updateDeleteBtn();
   }
 
   function showEmpty() {
@@ -1126,7 +1300,192 @@
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
-  // keyboard shortcut: Ctrl+K or / to focus search
+  // ─── DELETE & EXPORT ─────────────────────────────────────
+  const deleteConvBtn = document.getElementById('delete-conv-btn');
+  const exportBtn = document.getElementById('export-btn');
+  const clearAllBtn = document.getElementById('clear-all-btn');
+  const confirmOverlay = document.getElementById('confirm-overlay');
+  const confirmTitle = document.getElementById('confirm-title');
+  const confirmMsg = document.getElementById('confirm-msg');
+  const confirmOk = document.getElementById('confirm-ok');
+  const confirmCancel = document.getElementById('confirm-cancel');
+  const toast = document.getElementById('toast');
+
+  let pendingDeleteId = null;   // null = clear all
+  let pendingDeleteAll = false;
+
+  // Show the delete button in topbar when a conv is open
+  function updateDeleteBtn() {
+    deleteConvBtn.classList.toggle('visible', !!activeConvId);
+  }
+
+  deleteConvBtn.addEventListener('click', () => {
+    if (!activeConvId) return;
+    const conv = allConversations.find(c => c.id === activeConvId);
+    if (conv) confirmDelete(conv.id, conv.title, false);
+  });
+
+  clearAllBtn.addEventListener('click', () => {
+    if (allConversations.length === 0) return;
+    confirmTitle.textContent = 'Clear all conversations?';
+    confirmMsg.textContent = `This will remove all ${allConversations.length} conversations from the viewer. Make sure to export first if you need a copy.`;
+    pendingDeleteId = null;
+    pendingDeleteAll = true;
+    confirmOverlay.classList.add('visible');
+  });
+
+  function confirmDelete(id, title, deleteAll) {
+    if (deleteAll) return; // handled by clearAllBtn
+    confirmTitle.textContent = 'Delete conversation?';
+    confirmMsg.textContent = `"${title}" will be removed from the viewer. Export first if you want to keep a copy.`;
+    pendingDeleteId = id;
+    pendingDeleteAll = false;
+    confirmOverlay.classList.add('visible');
+  }
+
+  confirmCancel.addEventListener('click', () => {
+    confirmOverlay.classList.remove('visible');
+    pendingDeleteId = null;
+    pendingDeleteAll = false;
+  });
+
+  confirmOverlay.addEventListener('click', e => {
+    if (e.target === confirmOverlay) {
+      confirmOverlay.classList.remove('visible');
+      pendingDeleteId = null;
+      pendingDeleteAll = false;
+    }
+  });
+
+  confirmOk.addEventListener('click', () => {
+    confirmOverlay.classList.remove('visible');
+    if (pendingDeleteAll) {
+      const count = allConversations.length;
+      allConversations = [];
+      activeConvId = null;
+      renderSidebar();
+      uploadZone.style.display = 'flex';
+      chatArea.style.display = 'none';
+      emptyState.style.display = 'none';
+      convTitle.textContent = 'Select a conversation';
+      updateDeleteBtn();
+      showToast(`Removed all ${count} conversations`);
+    } else if (pendingDeleteId) {
+      doDelete(pendingDeleteId);
+    }
+    pendingDeleteId = null;
+    pendingDeleteAll = false;
+  });
+
+  function doDelete(id) {
+    const idx = allConversations.findIndex(c => c.id === id);
+    if (idx === -1) return;
+    const title = allConversations[idx].title;
+    allConversations.splice(idx, 1);
+
+    if (activeConvId === id) {
+      activeConvId = null;
+      chatMessages.innerHTML = '';
+      chatArea.style.display = 'none';
+      convTitle.textContent = 'Select a conversation';
+      updateDeleteBtn();
+      if (allConversations.length > 0) showEmpty();
+      else {
+        uploadZone.style.display = 'flex';
+        emptyState.style.display = 'none';
+      }
+    }
+    renderSidebar();
+    showToast(`Deleted "${title.slice(0, 40)}${title.length > 40 ? '…' : ''}"`);
+  }
+
+  // ─── EXPORT ───────────────────────────────────────────────
+  // We keep rawConversations so we can reconstruct the original JSON
+  let rawConversationMap = {};  // id → original raw object
+
+  // Patch handleFiles to keep raw data
+  const _origHandleFiles = handleFiles;
+
+  // Override: store raw data alongside parsed
+  async function handleFilesWithRaw(files) {
+    loading.classList.add('visible');
+    const results = [];
+    for (const file of files) {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const parsed = Array.isArray(data) ? data : [data];
+        results.push(...parsed);
+      } catch(e) { console.error('Failed to parse', file.name, e); }
+    }
+    const existing = new Set(allConversations.map(c => c.id));
+    for (const raw of results) {
+      const convId = raw.id || raw.conversation_id;
+      if (!existing.has(convId)) {
+        const conv = parseConversation(raw);
+        if (conv) {
+          allConversations.push(conv);
+          existing.add(convId);
+          rawConversationMap[convId] = raw;
+        }
+      }
+    }
+    allConversations.sort((a, b) => b.createTime - a.createTime);
+    loading.classList.remove('visible');
+    uploadZone.style.display = 'none';
+    renderSidebar();
+    updateDeleteBtn();
+    if (allConversations.length > 0 && !activeConvId) showEmpty();
+  }
+
+  // Replace event listeners to use new function
+  fileInput.removeEventListener('change', handleFiles);
+  fileInput.addEventListener('change', e => handleFilesWithRaw(e.target.files));
+  uploadZone.removeEventListener('drop', uploadZone._dropHandler);
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    handleFilesWithRaw(e.dataTransfer.files);
+  });
+
+  exportBtn.addEventListener('click', () => {
+    if (allConversations.length === 0) { showToast('Nothing to export yet'); return; }
+    // Reconstruct raw array for the currently loaded conversations
+    const toExport = allConversations
+      .map(c => rawConversationMap[c.id])
+      .filter(Boolean);
+    // For any conversation without raw data, create a minimal export
+    allConversations.forEach(c => {
+      if (!rawConversationMap[c.id]) {
+        toExport.push({ id: c.id, title: c.title, create_time: c.createTime, is_archived: c.isArchived, messages: c.messages });
+      }
+    });
+    const blob = new Blob([JSON.stringify(toExport, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversations-export-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${toExport.length} conversation${toExport.length !== 1 ? 's' : ''}`);
+  });
+
+  // Also update openConversation to call updateDeleteBtn
+  const _origOpenConversation = openConversation;
+  const __openConvRef = openConversation;
+
+  // Patch: wire updateDeleteBtn after open
+  convList.addEventListener('click', () => { setTimeout(updateDeleteBtn, 0); });
+
+  // ─── TOAST ────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement.tagName !== 'INPUT')) {
       e.preventDefault();
