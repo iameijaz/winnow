@@ -83,7 +83,7 @@ Or just download `winnow.html` directly from the [releases page](https://github.
 3. You'll receive an email with a download link
 4. Extract the zip — load `conversations.json` into Winnow
 
-You can load both files at the same time — Winnow merges them into a single view and labels each conversation with a `Claude` or `GPT` badge.
+You can load both files at the same time — Winnow merges them into a single view and labels each conversation with a `Claude` or `GPT` badge. [Experimental Feature]
 
 ---
 
